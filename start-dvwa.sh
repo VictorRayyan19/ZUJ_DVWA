@@ -1,4 +1,4 @@
-#!/bin/bash
+#!/usr/bin/env bash
 
 # DVWA Docker Startup Script
 # This script automates the deployment of DVWA (Damn Vulnerable Web Application) using Docker
@@ -91,10 +91,10 @@ install_docker_rhel() {
         PKG_MGR="yum"
     fi
     
-    sudo $PKG_MGR install -y yum-utils | tee -a "$LOG_FILE"
-    sudo $PKG_MGR config-manager --add-repo "https://download.docker.com/linux/$DISTRO/docker-ce.repo" 2>&1 | tee -a "$LOG_FILE" || \
+    sudo "$PKG_MGR" install -y yum-utils | tee -a "$LOG_FILE"
+    sudo "$PKG_MGR" config-manager --add-repo "https://download.docker.com/linux/$DISTRO/docker-ce.repo" 2>&1 | tee -a "$LOG_FILE" || \
         sudo yum-config-manager --add-repo "https://download.docker.com/linux/$DISTRO/docker-ce.repo" | tee -a "$LOG_FILE"
-    sudo $PKG_MGR install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin | tee -a "$LOG_FILE"
+    sudo "$PKG_MGR" install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin | tee -a "$LOG_FILE"
     
     log_message "Docker installed successfully"
 }
@@ -167,13 +167,17 @@ run_docker() {
 stop_existing_containers() {
     log_message "Checking for existing DVWA containers..."
     
-    # Check if any container is using port 80
+    # Check if any container is using port 80 and stop all of them
     if run_docker ps --format '{{.Ports}}' | grep -q ':80->'; then
         print_message "$YELLOW" "Port 80 is already in use. Stopping existing containers..."
-        CONTAINER_ID=$(run_docker ps --format '{{.ID}} {{.Ports}}' | grep ':80->' | awk '{print $1}')
-        if [ -n "$CONTAINER_ID" ]; then
-            run_docker stop "$CONTAINER_ID" | tee -a "$LOG_FILE"
-            log_message "Stopped container: $CONTAINER_ID"
+        # Get all container IDs using port 80
+        CONTAINER_IDS=$(run_docker ps --format '{{.ID}} {{.Ports}}' | grep ':80->' | awk '{print $1}')
+        if [ -n "$CONTAINER_IDS" ]; then
+            # Stop each container
+            while IFS= read -r CONTAINER_ID; do
+                run_docker stop "$CONTAINER_ID" | tee -a "$LOG_FILE"
+                log_message "Stopped container: $CONTAINER_ID"
+            done <<< "$CONTAINER_IDS"
         fi
     fi
 }
