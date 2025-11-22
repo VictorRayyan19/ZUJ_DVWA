@@ -63,7 +63,8 @@ install_docker_debian() {
         gnupg \
         lsb-release | tee -a "$LOG_FILE"
     
-    # Add Docker's official GPG key
+    # Add Docker's official GPG key (using official Docker installation method)
+    # This is the standard method from https://docs.docker.com/engine/install/
     sudo mkdir -p /etc/apt/keyrings
     curl -fsSL "https://download.docker.com/linux/$DISTRO/gpg" | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg
     
@@ -82,9 +83,18 @@ install_docker_debian() {
 # Function to install Docker on RHEL/CentOS/Fedora
 install_docker_rhel() {
     log_message "Installing Docker on RHEL/CentOS/Fedora..."
-    sudo yum install -y yum-utils | tee -a "$LOG_FILE"
-    sudo yum-config-manager --add-repo "https://download.docker.com/linux/$DISTRO/docker-ce.repo" | tee -a "$LOG_FILE"
-    sudo yum install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin | tee -a "$LOG_FILE"
+    
+    # Detect package manager (dnf is preferred, fallback to yum)
+    if command -v dnf &> /dev/null; then
+        PKG_MGR="dnf"
+    else
+        PKG_MGR="yum"
+    fi
+    
+    sudo $PKG_MGR install -y yum-utils | tee -a "$LOG_FILE"
+    sudo $PKG_MGR config-manager --add-repo "https://download.docker.com/linux/$DISTRO/docker-ce.repo" 2>&1 | tee -a "$LOG_FILE" || \
+        sudo yum-config-manager --add-repo "https://download.docker.com/linux/$DISTRO/docker-ce.repo" | tee -a "$LOG_FILE"
+    sudo $PKG_MGR install -y docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin | tee -a "$LOG_FILE"
     
     log_message "Docker installed successfully"
 }
@@ -138,9 +148,18 @@ check_docker_group() {
         sudo usermod -aG docker "$USER"
         print_message "$YELLOW" "User added to docker group. You may need to log out and back in for this to take effect."
         print_message "$YELLOW" "For now, commands will run with sudo."
-        USE_SUDO="sudo"
+        USE_SUDO="yes"
     else
-        USE_SUDO=""
+        USE_SUDO="no"
+    fi
+}
+
+# Function to run docker commands with or without sudo
+run_docker() {
+    if [ "$USE_SUDO" = "yes" ]; then
+        sudo docker "$@"
+    else
+        docker "$@"
     fi
 }
 
@@ -149,11 +168,11 @@ stop_existing_containers() {
     log_message "Checking for existing DVWA containers..."
     
     # Check if any container is using port 80
-    if $USE_SUDO docker ps --format '{{.Ports}}' | grep -q ':80->'; then
+    if run_docker ps --format '{{.Ports}}' | grep -q ':80->'; then
         print_message "$YELLOW" "Port 80 is already in use. Stopping existing containers..."
-        CONTAINER_ID=$($USE_SUDO docker ps --format '{{.ID}} {{.Ports}}' | grep ':80->' | awk '{print $1}')
+        CONTAINER_ID=$(run_docker ps --format '{{.ID}} {{.Ports}}' | grep ':80->' | awk '{print $1}')
         if [ -n "$CONTAINER_ID" ]; then
-            $USE_SUDO docker stop "$CONTAINER_ID" | tee -a "$LOG_FILE"
+            run_docker stop "$CONTAINER_ID" | tee -a "$LOG_FILE"
             log_message "Stopped container: $CONTAINER_ID"
         fi
     fi
@@ -162,7 +181,7 @@ stop_existing_containers() {
 # Function to pull DVWA image
 pull_dvwa_image() {
     log_message "Pulling DVWA Docker image..."
-    $USE_SUDO docker pull vulnerables/web-dvwa | tee -a "$LOG_FILE"
+    run_docker pull vulnerables/web-dvwa | tee -a "$LOG_FILE"
     log_message "DVWA image pulled successfully"
 }
 
@@ -174,7 +193,7 @@ run_dvwa_container() {
     print_message "$YELLOW" "Press Ctrl+C to stop the container"
     
     # Run the container and redirect output to log file and console
-    $USE_SUDO docker run --rm -it -p 80:80 vulnerables/web-dvwa 2>&1 | tee -a "$LOG_FILE"
+    run_docker run --rm -it -p 80:80 vulnerables/web-dvwa 2>&1 | tee -a "$LOG_FILE"
 }
 
 # Main script execution
