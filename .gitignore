@@ -1,0 +1,11 @@
+# DVWA Docker logs
+dvwa-docker.log
+
+# Temporary files
+*.tmp
+*.swp
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
